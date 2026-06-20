@@ -3,7 +3,7 @@ ExtractionView — Interface résultats extraction OCR
 Flux : POST /extract/{dossier_id} → tableau éditable → POST /extraction/confirm
 
 Intégration dans DossierView :
-    view = ExtractionView(token, dossier_id, file_path) molk
+    view = ExtractionView(token, dossier_id, file_path) 
     view.confirmed.connect(self._on_extraction_confirmed)
 """
 
