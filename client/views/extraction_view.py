@@ -225,24 +225,27 @@ class ResultsPage(QWidget):
         lignes_valides = stats.get("lignes_valides", 0)
 
         # ── Bandeau statut ────────────────────────────────────────────────────
-        # Analyse des formats pour le complément
-        all_non_dms = all(
-            pt.get("coordonnees", {}).get("format_detecte") != "DMS" 
-            for pt in donnees
-        ) if donnees else False
-        
-        any_non_dms = any(
-            pt.get("coordonnees", {}).get("format_detecte") in ("DM", "DD", "Inconnu")
-            for pt in donnees
-        )
+        # On vérifie si au moins une coordonnée n'est pas au format DMS
+        any_non_dms = False
+        for pt in donnees:
+            coords = pt.get("coordonnees", {})
+            fmt = coords.get("format_detecte", "Inconnu")
+            if fmt != "DMS":
+                any_non_dms = True
+                break
 
-        # Priorisation : Si nb_invalides > 0, on ne peut PAS être en vert, peu importe le 'statut'
+        # Priorisation : Si nb_invalides > 0 ou format non DMS, on ne peut PAS être en vert
         if nb_invalides == 0 and total_lignes > 0 and not any_non_dms:
             banner_bg = SUCCESS_BG
             banner_bd = SUCCESS_BD
             banner_fg = SUCCESS
             banner_tx = f"✓  Toutes les coordonnées sont valides et au format DMS ({lignes_valides}/{total_lignes}) — vous pouvez continuer."
-        elif 0 < nb_invalides < (total_lignes * 2): # *2 because we check both lat and lon
+        elif any_non_dms:
+            banner_bg = WARN_BG
+            banner_bd = WARN_BD
+            banner_fg = "#92400e"
+            banner_tx = f"⚠  Le format détecté n'est pas DMS. Veuillez générer un complément ou corriger les données."
+        elif 0 < nb_invalides < (total_lignes * 2):
             banner_bg = WARN_BG
             banner_bd = WARN_BD
             banner_fg = "#92400e"
