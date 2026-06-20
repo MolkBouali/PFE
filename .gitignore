@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+storage/formulaires/*
+storage/kmz/*
+storage/pdf_avis/*
+storage/complements/*
+models_ia/det_model/*
+models_ia/rec_model/*

@@ -1,0 +1,10 @@
+__pycache__
+*.py[cod]
+*$py.class
+.env
+.git
+.gitignore
+.vscode
+storage/
+models_ia/
+client/

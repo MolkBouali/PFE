@@ -1,0 +1,12 @@
+/* Feuille de style Qt -- Systeme OACA */
+QMainWindow, QWidget { background-color: #f8f9fa; font-family: "Segoe UI", Arial, sans-serif; font-size: 13px; color: #212529; }
+QPushButton { background-color: #0d6efd; color: white; border: none; padding: 8px 16px; border-radius: 4px; font-weight: 500; }
+QPushButton:hover { background-color: #0b5ed7; }
+QPushButton:pressed { background-color: #0a58ca; }
+QLineEdit, QComboBox, QTextEdit { border: 1px solid #ced4da; border-radius: 4px; padding: 6px 10px; background: white; }
+QLineEdit:focus, QComboBox:focus { border-color: #86b7fe; }
+QTableWidget { background: white; border: 1px solid #dee2e6; gridline-color: #dee2e6; }
+QTableWidget::item:selected { background: #cfe2ff; color: #052c65; }
+QHeaderView::section { background: #e9ecef; padding: 6px; border: none; font-weight: 600; }
+QLabel { color: #495057; }
+QCheckBox { spacing: 8px; }
