@@ -693,8 +693,11 @@ class ExtractionResultPage(QWidget):
         total_entities = n * 2
         valid_entities = 0
         for row in rows:
-            if row.get("valid_lat", row.get("valid", True)): valid_entities += 1
-            if row.get("valid_lon", row.get("valid", True)): valid_entities += 1
+            coords = row.get("coordonnees", {})
+            v_lat = coords.get("latitude_valide", row.get("valid_lat", row.get("valid", False)))
+            v_lon = coords.get("longitude_valide", row.get("valid_lon", row.get("valid", False)))
+            if v_lat: valid_entities += 1
+            if v_lon: valid_entities += 1
 
         # Bandeau
         all_valid = (valid_entities == total_entities)
@@ -731,8 +734,9 @@ class ExtractionResultPage(QWidget):
         # Remplir tableau
         self.table.setRowCount(n)
         for i, row in enumerate(rows):
-            v_lat = row.get("valid_lat", row.get("valid", True))
-            v_lon = row.get("valid_lon", row.get("valid", True))
+            coords = row.get("coordonnees", {})
+            v_lat = coords.get("latitude_valide", row.get("valid_lat", row.get("valid", False)))
+            v_lon = coords.get("longitude_valide", row.get("valid_lon", row.get("valid", False)))
 
             def cell(text, colored=False, is_valid=True):
                 item = QTableWidgetItem(str(text))
@@ -1364,6 +1368,8 @@ class DossierView(QWidget):
         """
         Affiche les résultats de l'extraction.
         """
+        self.stepper.mark_done(1)
+        self.stepper.set_current(2)
         self.page_results.load_data(rows, **kwargs)
         self.stack.setCurrentIndex(self.PAGE_RESULTS)
 
