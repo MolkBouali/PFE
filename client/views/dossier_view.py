@@ -550,9 +550,6 @@ class ExtractionResultPage(QWidget):
     relancer = Signal()
     valider  = Signal(list)   # émet les lignes validées
 
-    HEADERS = ["N°", "Latitude DMS", "Longitude DMS",
-               "Hauteur_mat", "Altitude_terrain", "Altitude_totale_mat"]
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self._rows = []
@@ -579,27 +576,25 @@ class ExtractionResultPage(QWidget):
         """)
         banner_lay = QHBoxLayout(self.banner)
         banner_lay.setContentsMargins(16, 0, 16, 0)
-        self.banner_label = QLabel("✓  Toutes les coordonnées sont valides (4/4) — vous pouvez continuer.")
+        self.banner_label = QLabel("Analyse des coordonnées en cours...")
         self.banner_label.setFont(QFont("Arial", 10, QFont.Bold))
         self.banner_label.setStyleSheet(f"color: {COLOR_SUCCESS}; background: transparent; border: none;")
         banner_lay.addWidget(self.banner_label)
         root.addWidget(self.banner)
 
         # Sous-titre
-        self.subtitle = QLabel("Type de formulaire : eolienne  ·  4 ligne(s) détectée(s)  ·  Taux de succès : 100.0%")
+        self.subtitle = QLabel("Chargement des informations...")
         self.subtitle.setFont(QFont("Arial", 8))
         self.subtitle.setStyleSheet(f"color: {COLOR_TEXT_MUTED};")
         root.addWidget(self.subtitle)
 
-        self.detail = QLabel("4 lignes extraites, 4 coordonnées valides")
+        self.detail = QLabel("Veuillez patienter...")
         self.detail.setFont(QFont("Arial", 8))
         self.detail.setStyleSheet(f"color: {COLOR_TEXT_MUTED};")
         root.addWidget(self.detail)
 
         # Tableau
         self.table = QTableWidget()
-        self.table.setColumnCount(len(self.HEADERS))
-        self.table.setHorizontalHeaderLabels(self.HEADERS)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.DoubleClicked)
@@ -679,12 +674,18 @@ class ExtractionResultPage(QWidget):
 
         root.addLayout(btn_row)
 
-    def load_data(self, rows: list, type_formulaire: str = "eolienne",
+    def load_data(self, rows: list, headers: list = None, type_formulaire: str = "eolienne",
                    n_detected: int = None, success_rate: float = 100.0,
                    n_valid: int = None):
         """
         rows: liste de DonneePointDTO (dicts avec coordonnées et donnees_specifiques)
+        headers: liste des entêtes de colonnes
         """
+        if headers is None:
+            # Fallback to default if no headers provided
+            headers = ["N°", "Latitude DMS", "Longitude DMS",
+                      "Hauteur_mat", "Altitude_terrain", "Altitude_totale_mat"]
+
         self._rows = rows
         n = len(rows)
         nd = n_detected if n_detected is not None else n
@@ -713,6 +714,18 @@ class ExtractionResultPage(QWidget):
                 f"✓  Toutes les coordonnées sont valides ({valid_entities}/{total_entities}) — vous pouvez continuer."
             )
             self.banner_label.setStyleSheet(f"color: {COLOR_SUCCESS}; background: transparent; border: none;")
+        elif valid_entities == 0:
+            self.banner.setStyleSheet("""
+                QFrame {
+                    background: #FFF3CD;
+                    border: 1.5px solid #FFEAA7;
+                    border-radius: 8px;
+                }
+            """)
+            self.banner_label.setText(
+                f"⚠  Aucune coordonnée n'est valide (0/{total_entities}) — veuillez corriger les données."
+            )
+            self.banner_label.setStyleSheet("color: #856404; background: transparent; border: none;")
         else:
             self.banner.setStyleSheet("""
                 QFrame {
@@ -731,8 +744,11 @@ class ExtractionResultPage(QWidget):
         )
         self.detail.setText(f"{nd} lignes extraites, {valid_entities} entités valides sur {total_entities}")
 
-        # Remplir tableau
+        # Configurer tableau
+        self.table.setColumnCount(len(headers))
+        self.table.setHorizontalHeaderLabels(headers)
         self.table.setRowCount(n)
+        
         for i, row in enumerate(rows):
             coords = row.get("coordonnees", {})
             v_lat = coords.get("latitude_valide", row.get("valid_lat", row.get("valid", False)))
@@ -748,23 +764,31 @@ class ExtractionResultPage(QWidget):
                     item.setFont(f)
                 return item
 
-            # Extraction des données selon la structure DonneePointDTO
-            coords = row.get("coordonnees", {})
             specs = row.get("donnees_specifiques", {})
             
-            num = row.get("numero") or row.get("numero_ligne", i + 1)
-            lat = coords.get("latitude_dms", "")
-            lon = coords.get("longitude_dms", "")
-            h = specs.get("hauteur_mat", "")
-            alt_t = specs.get("altitude_terrain", "")
-            alt_tot = specs.get("altitude_totale_mat", "")
+            # Remplissage dynamique basé sur les headers
+            # Mappage des headers d'affichage vers les clés techniques du backend
+            header_to_key = {
+                "Hauteur_mat": "hauteur_mat",
+                "Altitude_terrain": "altitude_terrain",
+                "Altitude_totale_mat": "altitude_totale_mat"
+            }
 
-            self.table.setItem(i, 0, cell(num))
-            self.table.setItem(i, 1, cell(lat, colored=True, is_valid=v_lat))
-            self.table.setItem(i, 2, cell(lon, colored=True, is_valid=v_lon))
-            self.table.setItem(i, 3, cell(h))
-            self.table.setItem(i, 4, cell(alt_t))
-            self.table.setItem(i, 5, cell(alt_tot))
+            for col_idx, header in enumerate(headers):
+                if header == "N°":
+                    val = row.get("numero") or row.get("numero_ligne", i + 1)
+                    self.table.setItem(i, col_idx, cell(val))
+                elif header == "Latitude DMS":
+                    val = coords.get("latitude_dms", "")
+                    self.table.setItem(i, col_idx, cell(val, colored=True, is_valid=v_lat))
+                elif header == "Longitude DMS":
+                    val = coords.get("longitude_dms", "")
+                    self.table.setItem(i, col_idx, cell(val, colored=True, is_valid=v_lon))
+                else:
+                    # Utilisation du mappage si disponible, sinon recherche par nom exact du header
+                    key = header_to_key.get(header, header)
+                    val = specs.get(key, "")
+                    self.table.setItem(i, col_idx, cell(val))
 
         # Bouton toujours activé
         self.btn_valider.setEnabled(True)
@@ -852,7 +876,9 @@ class ExtractionResultPage(QWidget):
 
             # On rafraîchit l'affichage avec les nouvelles validités
             # On conserve le type_formulaire etc. si disponible, sinon on utilise des valeurs par défaut
-            self.load_data(updated_rows, type_formulaire="eolienne")
+            # On peut passer les headers actuels pour conserver la structure du tableau
+            current_headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
+            self.load_data(updated_rows, headers=current_headers, type_formulaire="eolienne")
 
             # 5. Décision : Passage à l'étape suivante ?
             if valid_entities == total_entities:
