@@ -1,16 +1,16 @@
 # backend/modules/dea_config.py
 
 AEROPORTS = {
-    "Tunis-Carthage (DTTA)":        6.40,
-    "Djerba-Zarzis (DTTJ)":         6.10,
-    "Enfidha-Hammamet (DTNH)":      6.40,
-    "Sfax-Thyna (DTTX)":           25.90,
-    "Monastir-Habib Bourguiba (DTMB)": 2.74,
-    "Tozeur-Nefta (DTTZ)":         87.47,
-    "Gafsa-Ksar (DTTF)":          323.08,
-    "Gabès-Matmata (DTTG)":       124.96,
-    "Tabarka-Aïn Draham (DTKA)":   70.10,
-    "Borj El Amri (DTTI)":         33.22,
+    "Aéroport International de Tunis-Carthage":        6.40,
+    "Aéroport International de Djerba-Zarzis":         6.10,
+    "Aéroport International d'Enfidha-Hammamet":      6.40,
+    "Aéroport International de Sfax-Thyna":           25.90,
+    "Aéroport International de Monastir Habib-Bourguiba": 2.74,
+    "Aéroport International de Tozeur-Nefta":         87.47,
+    "Aéroport International de Gafsa-Ksar":          323.08,
+    "Aéroport International de Gabès-Matmata":       124.96,
+    "Aéroport International de Tabarka-Aïn Draham":   70.10,
+    "Aéroport Borj El Amri":         33.22,
 }
 
 SURFACES = [

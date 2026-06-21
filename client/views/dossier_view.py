@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QComboBox, QPushButton, QFrame, QTableWidget, QTableWidgetItem,
     QHeaderView, QFileDialog, QProgressBar, QSizePolicy, QScrollArea,
-    QStackedWidget, QApplication, QMessageBox
+    QStackedWidget, QApplication, QMessageBox, QCheckBox
 )
 from PySide6.QtCore import Qt, QSize, QTimer, Signal, QThread, QObject
 from PySide6.QtGui import QFont, QColor, QPainter, QPen, QBrush, QIcon, QCursor
@@ -24,6 +24,12 @@ COLOR_PRIMARY_HL = "#234876"   # bleu marine hover
 COLOR_SUCCESS    = "#28A745"   # vert
 COLOR_SUCCESS_BG = "#F0FFF4"   # fond vert clair
 COLOR_SUCCESS_BD = "#B2DFBD"   # bordure vert
+COLOR_WARN_BG    = "#fef9c3"   # fond jaune
+COLOR_WARN_BD    = "#fde68a"   # bordure jaune
+COLOR_WARN_FG    = "#92400e"   # texte orange foncé
+COLOR_DANGER     = "#991b1b"   # rouge foncé
+COLOR_DANGER_BG  = "#fee2e2"   # fond rouge clair
+COLOR_DANGER_BD  = "#fecaca"   # bordure rouge
 COLOR_BORDER     = "#D0D7E2"
 COLOR_BG         = "#F4F6F9"
 COLOR_TEXT_MAIN  = "#1A1A2E"
@@ -94,7 +100,7 @@ class ExtractionWorker(QThread):
 #  Widget Stepper horizontal
 # ──────────────────────────────────────────────
 class StepperWidget(QWidget):
-    STEPS = ["Informations", "Extraction", "Validation", "Étude DEA", "Avis PDF"]
+    STEPS = ["Informations", "Extraction", "Validation", "Analyse", "Avis"]
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -554,6 +560,8 @@ class ExtractionResultPage(QWidget):
         super().__init__(parent)
         self._rows = []
         self.client = None
+        self._dossier_id = None
+        self._token = None
         self._build_ui()
 
     def set_client(self, client):
@@ -653,6 +661,25 @@ class ExtractionResultPage(QWidget):
 
         btn_row.addSpacing(10)
 
+        self.btn_complement = QPushButton("📄  Générer complément")
+        self.btn_complement.setFixedHeight(40)
+        self.btn_complement.setFixedWidth(200)
+        self.btn_complement.setStyleSheet(f"""
+            QPushButton {{
+                background: white;
+                border: 1.5px solid {COLOR_BORDER};
+                border-radius: 6px;
+                font-size: 9pt;
+                color: {COLOR_TEXT_MUTED};
+            }}
+            QPushButton:hover {{ background: #F0F0F0; }}
+        """)
+        self.btn_complement.setVisible(False)
+        self.btn_complement.clicked.connect(self._on_generate_complement)
+        btn_row.addWidget(self.btn_complement)
+
+        btn_row.addSpacing(10)
+
         self.btn_valider = QPushButton("Valider les coordonnées  →")
         self.btn_valider.setFixedHeight(40)
         self.btn_valider.setFixedWidth(220)
@@ -676,11 +703,15 @@ class ExtractionResultPage(QWidget):
 
     def load_data(self, rows: list, headers: list = None, type_formulaire: str = "eolienne",
                    n_detected: int = None, success_rate: float = 100.0,
-                   n_valid: int = None):
+                   n_valid: int = None, dossier_id: int = None, token: str = None):
         """
         rows: liste de DonneePointDTO (dicts avec coordonnées et donnees_specifiques)
         headers: liste des entêtes de colonnes
         """
+        if dossier_id is not None:
+            self._dossier_id = dossier_id
+        if token is not None:
+            self._token = token
         if headers is None:
             # Fallback to default if no headers provided
             headers = ["N°", "Latitude DMS", "Longitude DMS",
@@ -700,44 +731,58 @@ class ExtractionResultPage(QWidget):
             if v_lat: valid_entities += 1
             if v_lon: valid_entities += 1
 
-        # Bandeau
-        all_valid = (valid_entities == total_entities)
-        if all_valid:
-            self.banner.setStyleSheet(f"""
-                QFrame {{
-                    background: {COLOR_SUCCESS_BG};
-                    border: 1.5px solid {COLOR_SUCCESS_BD};
-                    border-radius: 8px;
-                }}
-            """)
-            self.banner_label.setText(
-                f"✓  Toutes les coordonnées sont valides ({valid_entities}/{total_entities}) — vous pouvez continuer."
-            )
-            self.banner_label.setStyleSheet(f"color: {COLOR_SUCCESS}; background: transparent; border: none;")
-        elif valid_entities == 0:
-            self.banner.setStyleSheet("""
-                QFrame {
-                    background: #FFF3CD;
-                    border: 1.5px solid #FFEAA7;
-                    border-radius: 8px;
-                }
-            """)
-            self.banner_label.setText(
-                f"⚠  Aucune coordonnée n'est valide (0/{total_entities}) — veuillez corriger les données."
-            )
-            self.banner_label.setStyleSheet("color: #856404; background: transparent; border: none;")
+        # Détection format non-DMS
+        nb_invalides = total_entities - valid_entities
+        total_lignes = n
+        lignes_valides = sum(
+            1 for row in rows
+            if row.get("coordonnees", {}).get("latitude_valide", False)
+            and row.get("coordonnees", {}).get("longitude_valide", False)
+        )
+        statut = "succes" if lignes_valides == total_lignes and total_lignes > 0 else "echec"
+
+        any_non_dms = any(
+            row.get("coordonnees", {}).get("format_detecte", "DMS") not in ("DMS", None, "")
+            for row in rows
+            if row.get("coordonnees", {}).get("format_detecte") is not None
+        )
+
+        # Bandeau — logique priorisée
+        if nb_invalides == 0 and total_lignes > 0 and not any_non_dms:
+            banner_bg = COLOR_SUCCESS_BG
+            banner_bd = COLOR_SUCCESS_BD
+            banner_fg = COLOR_SUCCESS
+            banner_tx = f"✓  Toutes les coordonnées sont valides et au format DMS ({lignes_valides}/{total_lignes}) — vous pouvez continuer."
+        elif any_non_dms:
+            banner_bg = COLOR_WARN_BG
+            banner_bd = COLOR_WARN_BD
+            banner_fg = COLOR_WARN_FG
+            banner_tx = "⚠  Le format détecté n'est pas DMS. Veuillez générer un complément ou corriger les données."
+        elif 0 < nb_invalides < (total_lignes * 2):
+            banner_bg = COLOR_WARN_BG
+            banner_bd = COLOR_WARN_BD
+            banner_fg = COLOR_WARN_FG
+            banner_tx = "⚠  Certaines coordonnées sont invalides — veuillez les corriger avant de confirmer."
+        elif nb_invalides >= (total_lignes * 2) or total_lignes == 0 or statut == "echec":
+            banner_bg = COLOR_DANGER_BG
+            banner_bd = COLOR_DANGER_BD
+            banner_fg = COLOR_DANGER
+            banner_tx = "✗  Aucune coordonnée valide extraite — vérifiez la qualité du scan ou le format du document."
         else:
-            self.banner.setStyleSheet("""
-                QFrame {
-                    background: #FFF3CD;
-                    border: 1.5px solid #FFEAA7;
-                    border-radius: 8px;
-                }
-            """)
-            self.banner_label.setText(
-                f"⚠  {valid_entities}/{total_entities} coordonnées valides — vérifiez les cellules en rouge."
-            )
-            self.banner_label.setStyleSheet("color: #856404; background: transparent; border: none;")
+            banner_bg = COLOR_DANGER_BG
+            banner_bd = COLOR_DANGER_BD
+            banner_fg = COLOR_DANGER
+            banner_tx = "✗  Erreur lors de la validation des coordonnées."
+
+        self.banner.setStyleSheet(f"""
+            QFrame {{
+                background: {banner_bg};
+                border: 1.5px solid {banner_bd};
+                border-radius: 8px;
+            }}
+        """)
+        self.banner_label.setText(banner_tx)
+        self.banner_label.setStyleSheet(f"color: {banner_fg}; background: transparent; border: none;")
 
         self.subtitle.setText(
             f"Type de formulaire : {type_formulaire}  ·  {nd} ligne(s) détectée(s)  ·  Taux de succès : {success_rate:.1f}%"
@@ -790,6 +835,9 @@ class ExtractionResultPage(QWidget):
                     val = specs.get(key, "")
                     self.table.setItem(i, col_idx, cell(val))
 
+        # Bouton complément visible si format non-DMS
+        self.btn_complement.setVisible(any_non_dms)
+
         # Bouton toujours activé
         self.btn_valider.setEnabled(True)
         self.btn_valider.setStyleSheet(f"""
@@ -805,6 +853,38 @@ class ExtractionResultPage(QWidget):
                 background: {COLOR_PRIMARY_HL};
             }}
         """)
+
+    def _on_generate_complement(self):
+        import requests
+        from PySide6.QtWidgets import QApplication
+        if not self._dossier_id:
+            QMessageBox.warning(self, "Erreur", "Identifiant de dossier manquant.")
+            return
+        try:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            token = self._token or (self.client.token if self.client else None)
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            resp = requests.post(
+                f"http://localhost:8000/extraction/generate-complement/{self._dossier_id}",
+                headers=headers,
+                timeout=30,
+            )
+            if resp.status_code == 200:
+                filename = f"Complement_Dossier_{self._dossier_id}.docx"
+                path, _ = QFileDialog.getSaveFileName(
+                    self, "Sauvegarder le document", filename, "Document Word (*.docx)"
+                )
+                if path:
+                    with open(path, "wb") as f:
+                        f.write(resp.content)
+                    QMessageBox.information(self, "Succès", "Document généré avec succès.")
+            else:
+                QMessageBox.critical(self, "Erreur",
+                    f"Le serveur n'a pas pu générer le document ({resp.status_code}).\n{resp.text}")
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur réseau", f"Impossible de générer le document : {str(e)}")
+        finally:
+            QApplication.restoreOverrideCursor()
 
     def _on_valider(self):
         if not self.client:
@@ -863,6 +943,7 @@ class ExtractionResultPage(QWidget):
 
                 # Reconstruction d'une ligne pour load_data
                 updated_rows.append({
+                    "numero_ligne": i + 1,
                     "numero": row_data["n"],
                     "coordonnees": {"latitude_dms": row_data["lat"], "longitude_dms": row_data["lon"]},
                     "donnees_specifiques": {
@@ -907,10 +988,11 @@ class ExtractionResultPage(QWidget):
 
 
 # ──────────────────────────────────────────────
-#  Page 4 — Étude DEA
+#  Page 4 — Étude DEA (Saisie)
 # ──────────────────────────────────────────────
 class DEAPage(QWidget):
     submitted = Signal(dict)
+    back_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -979,23 +1061,6 @@ class DEAPage(QWidget):
         self.alt_max_display.setFixedHeight(42)
         root.addWidget(self.alt_max_display)
 
-        root.addSpacing(14)
-
-        # Résultat DEA
-        root.addWidget(field_label("RÉSULTAT — ALTITUDE MAXIMALE AUTORISÉE"))
-        root.addSpacing(4)
-        self.alt_autorisee_display = QLineEdit()
-        self.alt_autorisee_display.setReadOnly(True)
-        self.alt_autorisee_display.setPlaceholderText("Calculée après saisie des paramètres...")
-        self.alt_autorisee_display.setStyleSheet(InformationsPage.FIELD_STYLE + "background:#E9ECEF;")
-        self.alt_autorisee_display.setFixedHeight(42)
-        root.addWidget(self.alt_autorisee_display)
-
-        self.lbl_formule = QLabel("")
-        self.lbl_formule.setStyleSheet(f"color:{COLOR_TEXT_MUTED}; font-size:9pt;")
-        self.lbl_formule.setWordWrap(True)
-        root.addWidget(self.lbl_formule)
-
         root.addSpacing(16)
         
         # Form DEA
@@ -1031,30 +1096,31 @@ class DEAPage(QWidget):
         form_lay.addWidget(self.lbl_distance)
         form_lay.addWidget(self.distance_input)
 
-        # Btn calculer
-        self.btn_calculer = QPushButton("Calculer l'altitude autorisée")
-        self.btn_calculer.setFixedHeight(38)
-        self.btn_calculer.setStyleSheet(f"""
-            QPushButton {{
-                background: white;
-                border: 1.5px solid {COLOR_PRIMARY};
-                border-radius: 6px;
-                color: {COLOR_PRIMARY};
-                font-weight: bold;
-            }}
-            QPushButton:hover {{ background: #F0F4FA; }}
-        """)
-        self.btn_calculer.clicked.connect(self._on_calculer)
-        form_lay.addWidget(self.btn_calculer)
-
+        # Remove btn_calculer and keep only submit button (renamed)
         root.addWidget(form_card)
         root.addStretch(1)
 
         # Buttons
         btn_row = QHBoxLayout()
+        
+        self.btn_back = QPushButton("← Retour")
+        self.btn_back.setFixedHeight(40)
+        self.btn_back.setFixedWidth(120)
+        self.btn_back.setStyleSheet(f"""
+            QPushButton {{
+                background: white;
+                border: 1.5px solid {COLOR_BORDER};
+                border-radius: 6px;
+                color: {COLOR_TEXT_MAIN};
+            }}
+            QPushButton:hover {{ background: #F0F0F0; }}
+        """)
+        self.btn_back.clicked.connect(self.back_requested.emit)
+        btn_row.addWidget(self.btn_back)
+        
         btn_row.addStretch(1)
 
-        self.btn_submit = QPushButton("Valider l'étude DEA  →")
+        self.btn_submit = QPushButton("Lancer l'analyse →")
         self.btn_submit.setFixedHeight(40)
         self.btn_submit.setFixedWidth(180)
         self.btn_submit.setStyleSheet(f"""
@@ -1071,46 +1137,101 @@ class DEAPage(QWidget):
             }}
         """)
         self.btn_submit.clicked.connect(self._on_submit)
-        self.btn_submit.setEnabled(False)
+        self.btn_submit.setEnabled(True)
         btn_row.addWidget(self.btn_submit)
         root.addLayout(btn_row)
 
     def load_dea_config(self, client):
-        """Charge les aéroports et surfaces depuis GET /dea/config"""
-        try:
-            config = client.get("/dea/config")
-            if not config:
-                return
-            self._dea_config = config
-            self._needs_distance = config.get("surface_needs_distance", {})
-            
-            self.aeroport_combo.clear()
-            self.aeroport_combo.addItem("")
-            for name in config.get("aeroports", {}).keys():
-                self.aeroport_combo.addItem(name)
-            
-            self.surface_combo.clear()
-            self.surface_combo.addItem("")
-            for surface in config.get("surfaces", []):
-                self.surface_combo.addItem(surface)
-        except Exception as e:
-            print(f"[DEAPage] Erreur chargement config DEA: {e}")
+        """Charge les aéroports et surfaces."""
+        # Liste des aéroports officiels
+        aeroports = [
+            "Aéroport International de Tunis-Carthage",
+            "Aéroport International d'Enfidha-Hammamet",
+            "Aéroport International de Monastir Habib-Bourguiba",
+            "Aéroport International de Djerba-Zarzis",
+            "Aéroport International de Sfax-Thyna",
+            "Aéroport International de Tozeur-Nefta",
+            "Aéroport International de Gafsa-Ksar",
+            "Aéroport International de Tabarka-Aïn Draham",
+            "Aéroport International de Gabès-Matmata",
+            "Aéroport Borj El Amri"
+        ]
+        # Liste des 5 surfaces
+        surfaces = ["Horizontale Intérieure", "Conique", "Approche — 1ère section", "Approche — 2ème section", "Approche — 3ème section","Transition","Montée au Décollage"]
+        
+        self.aeroport_combo.clear()
+        self.aeroport_combo.addItem("Sélectionnez un aéroport...")
+        self.aeroport_combo.addItems(aeroports)
+        
+        self.surface_combo.clear()
+        self.surface_combo.addItem("Sélectionnez une surface...")
+        self.surface_combo.addItems(surfaces)
+        
+        # Config pour la visibilité de la distance
+        self._needs_distance = {s: True for s in surfaces}
+        self._needs_distance["Horizontale Intérieure"] = False
 
     def _on_surface_changed(self, surface: str):
         """Masque/affiche le champ distance selon la surface."""
         needs = self._needs_distance.get(surface, True)
         self.lbl_distance.setVisible(needs)
         self.distance_input.setVisible(needs)
-        self.alt_autorisee_display.clear()
-        self.lbl_formule.setText("")
-        self.btn_submit.setEnabled(False)
+        
 
-    def _on_calculer(self):
-        """Appelle POST /dea/calculer et affiche le résultat."""
+
+    def set_data(self, data: dict, client=None):
+        self.kmz_data = data
+        self.dossier_id = data.get("dossier_id")
+        if client:
+            self._client = client
+        self.alt_max_display.setText(
+            f"{data.get('altitude_finale_max', 'N/A')} m"
+        )
+        if data.get("kmz_path"):
+            self.kmz_link.setEnabled(True)
+        self.btn_submit.setEnabled(True)
+        self.btn_submit.setText("Lancer l'analyse →")
+
+    def _download_kmz(self):
+        """Gere le telechargement du fichier KMZ via l'API."""
+        if not self.kmz_data:
+            return
+            
+        try:
+            dossier_id = self.kmz_data.get("dossier_id")
+            if not dossier_id:
+                QMessageBox.critical(self, "Erreur", "ID de dossier manquant pour le téléchargement.")
+                return
+
+            content = self._client.get_binary(f"/documents/generate/kmz/{dossier_id}") if self._client else None
+            
+            if content:
+                filename = self.kmz_data.get("kmz_filename", f"localisation_{dossier_id}.kmz")
+                save_path, _ = QFileDialog.getSaveFileName(
+                    self, "Enregistrer le fichier KMZ", filename, "KMZ files (*.kmz)"
+                )
+                if save_path:
+                    with open(save_path, "wb") as f:
+                        f.write(content)
+                    QMessageBox.information(self, "Succès", f"Fichier KMZ enregistré sous : {save_path}")
+            else:
+                QMessageBox.critical(self, "Erreur", "Échec du téléchargement du fichier KMZ.")
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur", f"Une erreur est survenue : {str(e)}")
+
+    def _on_submit(self):
+        """Effectue le calcul puis transitionne vers la page de résultat."""
+        print(">>> _on_submit appelé")
+        print(f">>> client: {self._client}")
+        
+        # 1. Exécuter la logique de calcul
         aeroport = self.aeroport_combo.currentText().strip()
         surface  = self.surface_combo.currentText().strip()
+        print(f">>> aeroport: {aeroport}")
+        print(f">>> surface: {surface}")
         
-        if not aeroport or not surface:
+        if not aeroport or aeroport == "Sélectionnez un aéroport..." or \
+           not surface or surface == "Sélectionnez une surface...":
             QMessageBox.warning(self, "Champs manquants", 
                 "Veuillez sélectionner un aéroport et une surface.")
             return
@@ -1142,73 +1263,329 @@ class DEAPage(QWidget):
                 QMessageBox.warning(self, "Erreur DEA", err)
                 return
             
-            alt = result.get("alt_autorisee")
-            formule = result.get("formule_appliquee", "")
-            
-            self.alt_autorisee_display.setText(f"{alt} m")
-            self.lbl_formule.setText(f"Formule : {formule}")
-            self.btn_submit.setEnabled(True)
             self._last_dea_result = result
+            # 2. Transition immédiate vers la page de résultat
+            self.submitted.emit(self._last_dea_result)
             
         except Exception as e:
             QMessageBox.critical(self, "Erreur", str(e))
 
-    def set_data(self, data: dict, client=None):
-        self.kmz_data = data
-        if client:
-            self._client = client
-        self.alt_max_display.setText(
-            f"{data.get('altitude_finale_max', 'N/A')} m"
-        )
-        if data.get("kmz_path"):
-            self.kmz_link.setEnabled(True)
-        self.alt_autorisee_display.clear()
-        self.lbl_formule.setText("")
-        self.btn_submit.setEnabled(False)
+# ──────────────────────────────────────────────
+#  Page 5 — Interface de l'Avis
+# ──────────────────────────────────────────────
+class AvisPage(QWidget):
+    back_requested = Signal()
+    final_submitted = Signal(dict)
 
-    def _download_kmz(self):
-        """Gere le telechargement du fichier KMZ via l'API."""
-        if not self.kmz_data:
-            return
-            
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._current_result = {}
+        self._alt_finale_max = 0.0
+        self._dossier_id = None
+        self._client = None
+        self._build_ui()
+
+    def _build_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(40, 30, 40, 20)
+        root.setSpacing(0)
+
+        title = QLabel("Avis OACA")
+        title.setFont(QFont("Arial", 16, QFont.Bold))
+        title.setStyleSheet(f"color: {COLOR_TEXT_MAIN};")
+        root.addWidget(title)
+
+        root.addSpacing(6)
+        subtitle = QLabel("Résultat de l'étude DEA et génération de l'avis officiel.")
+        subtitle.setFont(QFont("Arial", 9))
+        subtitle.setStyleSheet(f"color: {COLOR_PRIMARY};")
+        root.addWidget(subtitle)
+
+        root.addSpacing(20)
+
+        # ── Carte résultats (altitude autorisée + écart + badge) ──
+        res_card = QFrame()
+        res_card.setStyleSheet(f"""
+            QFrame {{
+                background: white;
+                border: 2px solid {COLOR_PRIMARY};
+                border-radius: 12px;
+            }}
+        """)
+        res_lay = QHBoxLayout(res_card)
+        res_lay.setContentsMargins(30, 20, 30, 20)
+        res_lay.setSpacing(0)
+
+        # Altitude autorisée
+        alt_col = QVBoxLayout()
+        alt_col.setAlignment(Qt.AlignCenter)
+        lbl_alt_title = QLabel("ALTITUDE AUTORISÉE")
+        lbl_alt_title.setAlignment(Qt.AlignCenter)
+        lbl_alt_title.setFont(QFont("Arial", 8, QFont.Bold))
+        lbl_alt_title.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; border: none; background: transparent;")
+        self.alt_val = QLabel("--- m")
+        self.alt_val.setAlignment(Qt.AlignCenter)
+        self.alt_val.setFont(QFont("Arial", 22, QFont.Bold))
+        self.alt_val.setStyleSheet(f"color: {COLOR_PRIMARY}; border: none; background: transparent;")
+        self.lbl_formule = QLabel("")
+        self.lbl_formule.setAlignment(Qt.AlignCenter)
+        self.lbl_formule.setFont(QFont("Arial", 8, italic=True))
+        self.lbl_formule.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; border: none; background: transparent;")
+        alt_col.addWidget(lbl_alt_title)
+        alt_col.addSpacing(6)
+        alt_col.addWidget(self.alt_val)
+        alt_col.addWidget(self.lbl_formule)
+        res_lay.addLayout(alt_col)
+
+        # Séparateur
+        sep = QFrame()
+        sep.setFrameShape(QFrame.VLine)
+        sep.setStyleSheet(f"color: {COLOR_BORDER};")
+        res_lay.addSpacing(20)
+        res_lay.addWidget(sep)
+        res_lay.addSpacing(20)
+
+        # Écart
+        ecart_col = QVBoxLayout()
+        ecart_col.setAlignment(Qt.AlignCenter)
+        lbl_ecart_title = QLabel("ÉCART")
+        lbl_ecart_title.setAlignment(Qt.AlignCenter)
+        lbl_ecart_title.setFont(QFont("Arial", 8, QFont.Bold))
+        lbl_ecart_title.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; border: none; background: transparent;")
+        self.lbl_ecart = QLabel("--- m")
+        self.lbl_ecart.setAlignment(Qt.AlignCenter)
+        self.lbl_ecart.setFont(QFont("Arial", 22, QFont.Bold))
+        self.lbl_ecart.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; border: none; background: transparent;")
+        ecart_col.addWidget(lbl_ecart_title)
+        ecart_col.addSpacing(6)
+        ecart_col.addWidget(self.lbl_ecart)
+        res_lay.addLayout(ecart_col)
+
+        # Séparateur
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.VLine)
+        sep2.setStyleSheet(f"color: {COLOR_BORDER};")
+        res_lay.addSpacing(20)
+        res_lay.addWidget(sep2)
+        res_lay.addSpacing(20)
+
+        # Badge avis
+        badge_col = QVBoxLayout()
+        badge_col.setAlignment(Qt.AlignCenter)
+        lbl_badge_title = QLabel("AVIS")
+        lbl_badge_title.setAlignment(Qt.AlignCenter)
+        lbl_badge_title.setFont(QFont("Arial", 8, QFont.Bold))
+        lbl_badge_title.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; border: none; background: transparent;")
+        self.lbl_badge = QLabel("---")
+        self.lbl_badge.setAlignment(Qt.AlignCenter)
+        self.lbl_badge.setFont(QFont("Arial", 14, QFont.Bold))
+        self.lbl_badge.setFixedWidth(160)
+        self.lbl_badge.setFixedHeight(40)
+        self.lbl_badge.setStyleSheet("border-radius: 8px; border: none; background: #E0E0E0; color: #666;")
+        badge_col.addWidget(lbl_badge_title)
+        badge_col.addSpacing(6)
+        badge_col.addWidget(self.lbl_badge, alignment=Qt.AlignCenter)
+        res_lay.addLayout(badge_col)
+
+        root.addWidget(res_card)
+        root.addSpacing(20)
+
+        # ── Section favorable : cases à cocher ──
+        self.section_favorable = QFrame()
+        self.section_favorable.setStyleSheet(f"""
+            QFrame {{
+                background: white;
+                border: 1px solid {COLOR_BORDER};
+                border-radius: 8px;
+            }}
+        """)
+        fav_lay = QVBoxLayout(self.section_favorable)
+        fav_lay.setContentsMargins(24, 16, 24, 16)
+        fav_lay.setSpacing(10)
+
+        lbl_dir = QLabel("Validation par les directions")
+        lbl_dir.setFont(QFont("Arial", 10, QFont.Bold))
+        lbl_dir.setStyleSheet(f"color: {COLOR_TEXT_MAIN}; border: none; background: transparent;")
+        fav_lay.addWidget(lbl_dir)
+
+        lbl_dir_sub = QLabel("Cochez les directions qui valident le dossier.")
+        lbl_dir_sub.setFont(QFont("Arial", 8))
+        lbl_dir_sub.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; border: none; background: transparent;")
+        fav_lay.addWidget(lbl_dir_sub)
+
+        chk_row = QHBoxLayout()
+        chk_style = f"color: {COLOR_TEXT_MAIN}; font-size: 10pt; border: none; background: transparent;"
+        self.chk_dna  = QCheckBox("DNA")
+        self.chk_dana = QCheckBox("DANA")
+        self.chk_der  = QCheckBox("DER")
+        self.chk_dta  = QCheckBox("DTA")
+        for chk in [self.chk_dna, self.chk_dana, self.chk_der, self.chk_dta]:
+            chk.setStyleSheet(chk_style)
+            chk_row.addWidget(chk)
+        chk_row.addStretch(1)
+        fav_lay.addLayout(chk_row)
+
+        self.btn_confirmer = QPushButton("Confirmer les validations")
+        self.btn_confirmer.setFixedHeight(38)
+        self.btn_confirmer.setFixedWidth(220)
+        self.btn_confirmer.setStyleSheet(f"""
+            QPushButton {{
+                background: white;
+                border: 1.5px solid {COLOR_PRIMARY};
+                border-radius: 6px;
+                color: {COLOR_PRIMARY};
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background: #F0F4FA; }}
+        """)
+        self.btn_confirmer.clicked.connect(self._on_confirmer)
+        fav_lay.addWidget(self.btn_confirmer, alignment=Qt.AlignLeft)
+
+        self.section_favorable.setVisible(False)
+        root.addWidget(self.section_favorable)
+
+        root.addStretch(1)
+
+        # ── Boutons bas ──
+        btn_row = QHBoxLayout()
+        self.btn_back = QPushButton("← Retour")
+        self.btn_back.setFixedHeight(40)
+        self.btn_back.setFixedWidth(120)
+        self.btn_back.setStyleSheet(f"""
+            QPushButton {{
+                background: white;
+                border: 1.5px solid {COLOR_BORDER};
+                border-radius: 6px;
+                color: {COLOR_TEXT_MAIN};
+            }}
+            QPushButton:hover {{ background: #F0F0F0; }}
+        """)
+        self.btn_back.clicked.connect(self.back_requested.emit)
+        btn_row.addWidget(self.btn_back)
+        btn_row.addStretch(1)
+
+        self.btn_generer = QPushButton("📄  Générer l'avis officiel")
+        self.btn_generer.setFixedHeight(40)
+        self.btn_generer.setFixedWidth(220)
+        self.btn_generer.setStyleSheet(f"""
+            QPushButton {{
+                background: {COLOR_PRIMARY};
+                border: none;
+                border-radius: 6px;
+                color: white;
+                font-weight: bold;
+                font-size: 10pt;
+            }}
+            QPushButton:hover {{ background: {COLOR_PRIMARY_HL}; }}
+        """)
+        self.btn_generer.setVisible(False)
+        self.btn_generer.clicked.connect(self._on_generer_avis)
+        btn_row.addWidget(self.btn_generer)
+
+        root.addLayout(btn_row)
+
+    def set_result(self, result: dict, alt_finale_max: float = 0.0,
+                   dossier_id: int = None, client=None):
+        self._current_result = result
+        self._alt_finale_max = alt_finale_max
+        self._dossier_id = dossier_id
+        self._client = client
+
+        alt_autorisee = result.get("alt_autorisee", 0.0)
+        formule = result.get("formule_appliquee", "")
+
+        self.alt_val.setText(f"{alt_autorisee} m")
+        self.lbl_formule.setText(f"Formule : {formule}" if formule else "")
+
+        # Calcul écart
         try:
-            dossier_id = self.kmz_data.get("dossier_id")
-            if not dossier_id:
-                QMessageBox.critical(self, "Erreur", "ID de dossier manquant pour le téléchargement.")
-                return
+            ecart = float(alt_autorisee) - float(alt_finale_max)
+        except (TypeError, ValueError):
+            ecart = None
 
-            content = self._client.get_binary(f"/documents/generate/kmz/{dossier_id}") if self._client else None
-            
-            if content:
-                filename = self.kmz_data.get("kmz_filename", f"localisation_{dossier_id}.kmz")
-                save_path, _ = QFileDialog.getSaveFileName(
-                    self, "Enregistrer le fichier KMZ", filename, "KMZ files (*.kmz)"
-                )
-                if save_path:
-                    with open(save_path, "wb") as f:
-                        f.write(content)
-                    QMessageBox.showinfo("Succès", f"Fichier KMZ enregistré sous : {save_path}")
-            else:
-                QMessageBox.showerror("Erreur", "Échec du téléchargement du fichier KMZ.")
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Une erreur est survenue : {str(e)}")
+        if ecart is not None:
+            signe = "+" if ecart >= 0 else ""
+            self.lbl_ecart.setText(f"{signe}{ecart:.2f} m")
+            favorable = ecart >= 0
+        else:
+            self.lbl_ecart.setText("N/A")
+            favorable = False
 
-    def _on_submit(self):
-        if not hasattr(self, '_last_dea_result') or not self._last_dea_result:
-            QMessageBox.warning(self, "Calcul requis",
-                "Veuillez d'abord calculer l'altitude autorisée.")
+        # Badge
+        if favorable:
+            self.lbl_badge.setText("✓  FAVORABLE")
+            self.lbl_badge.setStyleSheet(f"border-radius: 8px; border: none; background: {COLOR_SUCCESS_BG}; color: {COLOR_SUCCESS}; font-weight: bold;")
+            self.section_favorable.setVisible(True)
+            self.btn_generer.setVisible(False)
+            # Reset cases
+            for chk in [self.chk_dna, self.chk_dana, self.chk_der, self.chk_dta]:
+                chk.setChecked(False)
+        else:
+            self.lbl_badge.setText("✗  DÉFAVORABLE")
+            self.lbl_badge.setStyleSheet(f"border-radius: 8px; border: none; background: {COLOR_DANGER_BG}; color: {COLOR_DANGER}; font-weight: bold;")
+            self.section_favorable.setVisible(False)
+            self.btn_generer.setVisible(True)
+
+        self.lbl_ecart.setStyleSheet(
+            f"color: {COLOR_SUCCESS}; border: none; background: transparent;" if favorable
+            else f"color: {COLOR_DANGER}; border: none; background: transparent;"
+        )
+
+    def _on_confirmer(self):
+        """Affiche le bouton Générer après confirmation des cases."""
+        self.btn_generer.setVisible(True)
+
+    def _on_generer_avis(self):
+        """Appelle POST /documents/generate/pdf/{dossier_id} et ouvre le PDF."""
+        if not self._dossier_id or not self._client:
+            QMessageBox.warning(self, "Erreur", "Informations manquantes.")
             return
-        
-        self.submitted.emit({
-            "aeroport":      self.aeroport_combo.currentText(),
-            "surface":       self.surface_combo.currentText(),
-            "distance_m":    self.distance_input.text() if self.distance_input.isVisible() else None,
-            "alt_demandee":  self.alt_max_display.text(),
-            "alt_autorisee": self.alt_autorisee_display.text(),
-            "formule":       self.lbl_formule.text(),
-        })
-# No changes here, just making sure I don't replace the whole class unless intended. 
-# Since I'm rewriting the DEAPage class, I will replace the entire block from "class DEAPage(QWidget):" to the end of its methods.
+
+        toutes_cochees = all([
+            self.chk_dna.isChecked(),
+            self.chk_dana.isChecked(),
+            self.chk_der.isChecked(),
+            self.chk_dta.isChecked(),
+        ])
+
+        try:
+            from PySide6.QtWidgets import QApplication
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+
+            payload = {
+                "validation_dna":  self.chk_dna.isChecked(),
+                "validation_dana": self.chk_dana.isChecked(),
+                "validation_der":  self.chk_der.isChecked(),
+                "validation_dta":  self.chk_dta.isChecked(),
+                "avis_type": "favorable" if toutes_cochees else "defavorable",
+            }
+            content = self._client.post_binary(
+                f"/documents/generate/pdf/{self._dossier_id}",
+                json=payload
+            )
+            if content:
+                import tempfile, os
+                from PySide6.QtGui import QDesktopServices
+                from PySide6.QtCore import QUrl
+                tmp = tempfile.NamedTemporaryFile(
+                    delete=False,
+                    suffix=".pdf",
+                    prefix=f"avis_oaca_{self._dossier_id}_"
+                )
+                tmp.write(content)
+                tmp.close()
+                QDesktopServices.openUrl(QUrl.fromLocalFile(tmp.name))
+                self.final_submitted.emit(self._current_result)
+            else:
+                QMessageBox.critical(self, "Erreur", "Le serveur n'a pas retourné de PDF.")
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur", f"Impossible de générer l'avis : {str(e)}")
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def _on_final(self):
+        if hasattr(self, '_current_result'):
+            self.final_submitted.emit(self._current_result)
 
 # ──────────────────────────────────────────────
 #  Vue principale : DossierView
@@ -1228,12 +1605,14 @@ class DossierView(QWidget):
     PAGE_LOADING   = 1
     PAGE_RESULTS   = 2
     PAGE_DEA       = 3
+    PAGE_AVIS      = 4
 
     def __init__(self, token: str = None, parent=None):
         super().__init__(parent)
         self.token = token
         self.client = HTTPClient(token=self.token)
-        self.current_dossier_id = None
+        self.current_dossier_id  = None
+        self.current_formulaire_id = None
         self.setWindowTitle("Système de gestion de demandes d'avis OACA — Créer un nouveau dossier")
         self.setMinimumSize(900, 620)
         self.setStyleSheet(f"background: {COLOR_BG};")
@@ -1270,11 +1649,13 @@ class DossierView(QWidget):
         self.page_results.set_client(self.client)
         self.page_dea      = DEAPage()
         self.page_dea.load_dea_config(self.client)
+        self.page_avis = AvisPage()
 
         self.stack.addWidget(self.page_infos)    # 0
         self.stack.addWidget(self.page_loading)  # 1
-        self.stack.addWidget(self.page_results)  # 2
+        self.stack.addWidget(self.page_results) # 2
         self.stack.addWidget(self.page_dea)       # 3
+        self.stack.addWidget(self.page_avis) # 4
 
         root.addWidget(self.stack)
 
@@ -1284,6 +1665,9 @@ class DossierView(QWidget):
         self.page_results.relancer.connect(self._on_relancer)
         self.page_results.valider.connect(self._on_valider)
         self.page_dea.submitted.connect(self._on_dea_submitted)
+        self.page_dea.back_requested.connect(self._on_dea_back_to_validation)
+        self.page_avis.back_requested.connect(self._on_dea_back)
+        self.page_avis.final_submitted.connect(self._on_dea_final_submitted)
 
         # État initial
         self.stepper.set_current(0)
@@ -1340,13 +1724,16 @@ class DossierView(QWidget):
         try:
             # 1. Appeler /extraction/confirm pour générer le KMZ et obtenir l'altitude max
             # On envoie les coordonnées validées pour confirmation finale
-            payload = {"formulaire_id": self.current_dossier_id, "points": rows}
+            formulaire_id = self.current_formulaire_id or self.current_dossier_id
+            payload = {"formulaire_id": formulaire_id, "points": rows}
             res = self.client.post("/extraction/confirm", json=payload)
+            print(f">>> CONFIRM RESPONSE: {res}")
 
             if not res:
                 raise Exception("Le serveur n'a pas répondu à la confirmation.")
 
             # On attend un objet contenant kmz_path, kmz_filename et altitude_finale_max
+            self._confirm_result = res
             self.page_dea.set_data(res, client=self.client)
 
             # 2. Mise à jour UI
@@ -1361,11 +1748,33 @@ class DossierView(QWidget):
             QMessageBox.critical(self, "Erreur de confirmation", f"Impossible de confirmer les coordonnées : {str(e)}")
 
     def _on_dea_submitted(self, data: dict):
-        """Gère la soumission du formulaire DEA."""
-        QMessageBox.information(self, "Étude DEA", "Les données de l'étude DEA ont été enregistrées avec succès.")
-        # Transition vers la page finale Avis PDF (PAGE 4) si elle existait
+        """Transition vers la page Avis."""
+        alt_finale_max = self._confirm_result.get("altitude_finale_max", 0.0) if hasattr(self, "_confirm_result") else 0.0
+        self.page_avis.set_result(
+            data,
+            alt_finale_max=alt_finale_max,
+            dossier_id=self.current_dossier_id,
+            client=self.client,
+        )
         self.stepper.mark_done(3)
         self.stepper.set_current(4)
+        self.stack.setCurrentIndex(self.PAGE_AVIS)
+
+    def _on_dea_back(self):
+        """Retourne à la page de saisie DEA."""
+        self.stack.setCurrentIndex(self.PAGE_DEA)
+
+    def _on_dea_back_to_validation(self):
+        """Retourne à la page de validation des coordonnées."""
+        self.stack.setCurrentIndex(self.PAGE_RESULTS)
+        self.stepper.set_current(2)
+
+    def _on_dea_final_submitted(self, data: dict):
+        """Gère la validation finale de l'étude DEA."""
+        QMessageBox.information(self, "Étude DEA", "Les données de l'étude DEA ont été enregistrées avec succès.")
+        self.stepper.mark_done(3)
+        self.stepper.set_current(4)
+        # Transition vers la page finale Avis PDF si implémentée
 
     # ── API publique ─────────────────────────────
 
@@ -1375,8 +1784,9 @@ class DossierView(QWidget):
         if "id" in result:
             self.current_dossier_id = result["id"]
         elif self.current_dossier_id is None:
-            # On essaie de trouver l'id dans le résultat d'extraction si le backend le renvoie
             self.current_dossier_id = result.get("dossier_id")
+        # Stocker le formulaire_id retourné par le pipeline OCR
+        self.current_formulaire_id = result.get("formulaire_id")
 
         # ExtractionKResult contient 'donnees', 'statistiques', etc.
         rows = result.get("donnees", [])
@@ -1387,7 +1797,9 @@ class DossierView(QWidget):
             type_formulaire=result.get("type_formulaire", "Inconnu"),
             n_detected=stats.get("total_lignes", len(rows)),
             success_rate=result.get("taux_succes", 100.0),
-            n_valid=stats.get("coordonnees_valides", len(rows))
+            n_valid=stats.get("coordonnees_valides", len(rows)),
+            dossier_id=self.current_dossier_id,
+            token=self.token,
         )
 
     def show_extraction_results(self, rows: list, **kwargs):

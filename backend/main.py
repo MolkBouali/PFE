@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.database.connection import engine, Base
 from backend.core.config import settings
-from backend.api import auth, dossiers, extraction, decision, pdf_service, kmz_service, archives, statistiques
+from backend.api import auth, dossiers, extraction, decision, pdf_service, kmz_service, archives, statistiques, dea
 
 Base.metadata.create_all(bind=engine)
 
@@ -28,3 +28,4 @@ app.include_router(pdf_service.router,   prefix="/documents",  tags=["Documents"
 app.include_router(kmz_service.router,   prefix="/documents",  tags=["Documents"])
 app.include_router(archives.router,      prefix="/archives",   tags=["Archives"])
 app.include_router(statistiques.router,  prefix="/stats",      tags=["Statistiques"])
+app.include_router(dea.router,             prefix="/dea",        tags=["DEA"])

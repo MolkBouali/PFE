@@ -474,10 +474,10 @@ class ExtractionService:
             altitude_finale_max = 0.0
             for pt in points_data:
                 spec = pt.get("donnees_specifiques", {})
-                # Chercher spécifiquement les champs d'altitude finale
+                # Chercher les champs d'altitude totale ou finale
                 for key, val in spec.items():
                     key_lower = key.lower()
-                    if "altitude finale" in key_lower:
+                    if "altitude totale" in key_lower or "altitude finale" in key_lower:
                         try:
                             val_f = float(str(val).replace(",", "."))
                             if val_f > altitude_finale_max:
@@ -503,6 +503,7 @@ class ExtractionService:
 
             return {
                 "status": "success",
+                "dossier_id": dossier_id,
                 "nb_points": len(points_data),
                 "kmz_path": kmz_path,
                 "kmz_filename": kmz_filename,

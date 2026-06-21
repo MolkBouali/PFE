@@ -65,6 +65,7 @@ class ExtractionResult(BaseModel):
     statistiques: StatistiquesDTO = StatistiquesDTO()
     formulaire_id: Optional[int] = None
     type_formulaire: Optional[str] = None
+    format_detecte: str = "Inconnu"
 
 
 class ConfirmationRequest(BaseModel):

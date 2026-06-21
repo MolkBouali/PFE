@@ -14,7 +14,7 @@ class DeaRequest(BaseModel):
     surface: str
     distance_m: Optional[float] = None
 
-@router.get("/dea/config")
+@router.get("/config")
 def get_dea_config(current_user=Depends(get_current_user)):
     """Retourne la liste des aéroports, surfaces et règles distance."""
     return {
@@ -23,7 +23,7 @@ def get_dea_config(current_user=Depends(get_current_user)):
         "surface_needs_distance": SURFACE_NEEDS_DISTANCE,
     }
 
-@router.post("/dea/calculer")
+@router.post("/calculer")
 def calculer_dea(req: DeaRequest, current_user=Depends(get_current_user)):
     """Calcule l'altitude autorisée selon les paramètres DEA."""
     return calculer_altitude_autorisee(

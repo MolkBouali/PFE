@@ -23,6 +23,15 @@ class HTTPClient:
         except requests.RequestException:
             return None
 
+    def post_binary(self, path: str, json: dict = None, files: dict = None) -> Optional[bytes]:
+        """Envoie des données et récupère le contenu binaire de la réponse (ex: génération de PDF)."""
+        try:
+            r = self.session.post(f"{self.base_url}{path}", json=json, files=files, timeout=60)
+            r.raise_for_status()
+            return r.content
+        except requests.RequestException:
+            return None
+
     def post(self, path: str, json: dict = None, files: dict = None) -> Optional[Any]:
         try:
             r = self.session.post(f"{self.base_url}{path}", json=json, files=files, timeout=60)
