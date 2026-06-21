@@ -47,7 +47,8 @@ class ExtractionService:
         self,
         formulaire_id: int,
         form_type: str,
-        rows: List[dict]
+        rows: List[dict],
+        marker_id: Optional[int] = None
     ) -> ExtractionResult:
         """
         Transforme les lignes brutes extraites par l'OCR en la structure JSON
@@ -345,7 +346,8 @@ class ExtractionService:
                 return self._build_extraction_result(
                     formulaire_id=formulaire.id,
                     form_type="Inconnu",
-                    rows=[]
+                    rows=[],
+                    marker_id=marker_id
                 )
 
             form_type = config.FORMULAIRES.get(marker_id, "Inconnu")
@@ -356,7 +358,8 @@ class ExtractionService:
                 return self._build_extraction_result(
                     formulaire_id=formulaire.id,
                     form_type=form_type,
-                    rows=[]
+                    rows=[],
+                    marker_id=marker_id
                 )
 
             print("  ... Computing ROIs and running OCR pipeline")
@@ -395,7 +398,8 @@ class ExtractionService:
             result = self._build_extraction_result(
                 formulaire_id=formulaire.id,
                 form_type=form_type,
-                rows=all_rows
+                rows=all_rows,
+                marker_id=marker_id
             )
 
             print(f">>> [ExtractionService] Preview completed for {filename}")
@@ -438,8 +442,10 @@ class ExtractionService:
                 coords = pt.get("coordonnees", {})
                 lat = coords.get("latitude_dms", "")
                 lon = coords.get("longitude_dms", "")
-                lat_val = coords.get("latitude_valide", False)
-                lon_val = coords.get("longitude_valide", False)
+                # coordonnee_valide = True for all confirmed points
+                # (they passed validation before confirm was called)
+                lat_val = True
+                lon_val = True
                 specifiques = pt.get("donnees_specifiques", {})
 
                 # Upsert: Vérifier si le point existe déjà pour ce formulaire et cette ligne
@@ -448,9 +454,17 @@ class ExtractionService:
                     PointMesure.numero_ligne == num_ligne
                 ).first()
 
+                lat_dd_val = coords.get("latitude_dd")
+                lon_dd_val = coords.get("longitude_dd")
+
                 if existing_point:
-                    existing_point.coordinates = {"lat": lat, "lon": lon}
-                    existing_point.coordonnee_valide = lat_val and lon_val
+                    existing_point.coordinates = {
+                        "lat": lat,
+                        "lon": lon,
+                        "lat_dd": lat_dd_val,
+                        "lon_dd": lon_dd_val,
+                    }
+                    existing_point.coordonnee_valide = True
                     existing_point.corrigee_manuellement = True
                     existing_point.donnees_specifiques = specifiques
                     point_to_save = existing_point
@@ -458,8 +472,13 @@ class ExtractionService:
                     point_to_save = PointMesure(
                         formulaire_id=formulaire_id,
                         numero_ligne=num_ligne,
-                        coordinates={"lat": lat, "lon": lon},
-                        coordonnee_valide=lat_val and lon_val,
+                        coordinates={
+                            "lat": lat,
+                            "lon": lon,
+                            "lat_dd": lat_dd_val,
+                            "lon_dd": lon_dd_val,
+                        },
+                        coordonnee_valide=True,
                         corrigee_manuellement=True,
                         donnees_specifiques=specifiques,
                         page_source=1

@@ -16,7 +16,7 @@ class KpiCard(QFrame):
         self.setup_ui()
 
     def setup_ui(self):
-        self.setFixedHeight(110)
+        self.setFixedHeight(95)
         self.setStyleSheet(f"""
             QFrame {{
                 background-color: {self.tint};
@@ -34,7 +34,7 @@ class KpiCard(QFrame):
         self.title_label.setStyleSheet("color: #888; font-size: 12px; border: none; background: transparent;")
         
         self.value_label = QLabel("0")
-        self.value_label.setStyleSheet(f"color: {self.color}; font-size: 32px; font-weight: bold; border: none; background: transparent;")
+        self.value_label.setStyleSheet(f"color: {self.color}; font-size: 28px; font-weight: bold; border: none; background: transparent;")
         
         self.subtitle_label = QLabel("")
         self.subtitle_label.setStyleSheet("color: #AAA; font-size: 11px; border: none; background: transparent;")
@@ -52,12 +52,14 @@ class ChartCard(QFrame):
     """
     Card container for matplotlib charts
     """
-    def __init__(self, title, parent=None):
+    def __init__(self, title, height=280, parent=None):
         super().__init__(parent)
         self.title = title
+        self.height = height
         self.setup_ui()
 
     def setup_ui(self):
+        self.setFixedHeight(self.height)
         self.setStyleSheet("""
             QFrame {
                 background-color: white;
@@ -85,11 +87,14 @@ class ChartCard(QFrame):
         title_layout.addWidget(title_label)
         title_layout.addWidget(separator)
 
-        self.canvas = FigureCanvas(Figure(figsize=(4, 3), dpi=100))
+        fig_height = max(1.5, (self.height - 80) / 100)
+        self.fig = Figure(figsize=(4, fig_height), dpi=100)
+        self.fig.patch.set_facecolor('white')
+        self.canvas = FigureCanvas(self.fig)
         self.canvas.setStyleSheet("border: none; background: transparent;")
         
         layout.addWidget(title_container)
         layout.addWidget(self.canvas)
 
     def get_figure(self):
-        return self.canvas.figure
+        return self.fig

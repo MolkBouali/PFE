@@ -57,23 +57,7 @@ class ExtractionWorker(QThread):
 
     def run(self):
         try:
-            # 1. Création du dossier si nécessaire
-            if self.dossier_id is None:
-                # Préparer les données pour le backend (DossierCreate)
-                payload = {
-                    "nom_demandeur": self.data.get("nom", ""),
-                    "identifiant_depositaire": self.data.get("identifiant", ""),
-                    "type_demande": self.data.get("type", ""),
-                    "region": self.data.get("region", ""),
-                }
-                res = self.client.post("/dossiers/", json=payload)
-                if res and "id" in res:
-                    self.dossier_id = res["id"]
-                else:
-                    self.error.emit("Erreur lors de la création du dossier sur le serveur.")
-                    return
-
-            # 2. Extraction des coordonnées
+            # 1. Extraction des coordonnées
             file_path = self.data.get("formulaire")
             if not file_path or not os.path.exists(file_path):
                 self.error.emit("Fichier formulaire introuvable pour l'extraction.")
@@ -878,6 +862,19 @@ class ExtractionResultPage(QWidget):
                     with open(path, "wb") as f:
                         f.write(resp.content)
                     QMessageBox.information(self, "Succès", "Document généré avec succès.")
+                    
+                    # Reset workflow to prevent duplicate dossier creation
+                    # Traverse up to find the main DossierView controller
+                    view = self.parent()
+                    while view and not hasattr(view, 'current_dossier_id'):
+                        view = view.parent()
+                    
+                    if view:
+                        view.current_dossier_id = None
+                        view.current_formulaire_id = None
+                        view.page_infos.reset()
+                        view.stepper.set_current(0)
+                        view.stack.setCurrentIndex(view.PAGE_INFOS)
             else:
                 QMessageBox.critical(self, "Erreur",
                     f"Le serveur n'a pas pu générer le document ({resp.status_code}).\n{resp.text}")
@@ -1613,7 +1610,7 @@ class DossierView(QWidget):
         self.client = HTTPClient(token=self.token)
         self.current_dossier_id  = None
         self.current_formulaire_id = None
-        self.setWindowTitle("Système de gestion de demandes d'avis OACA — Créer un nouveau dossier")
+        self.setWindowTitle("Système de gestion de demandes d'avis OACA — Traiter un nouveau dossier")
         self.setMinimumSize(900, 620)
         self.setStyleSheet(f"background: {COLOR_BG};")
         self._build_ui()
@@ -1676,14 +1673,57 @@ class DossierView(QWidget):
     # ── Transitions ─────────────────────────────
 
     def _on_form_submitted(self, data: dict):
-        """Lance l'extraction autonome via le Worker."""
+        """Crée le dossier puis lance l'extraction autonome via le Worker."""
+        # Guard: if a dossier already exists for this session, 
+        # don't create a new one
+        if self.current_dossier_id:
+            reply = QMessageBox.question(
+                self, "Dossier existant",
+                f"Un dossier (ID: {self.current_dossier_id}) est déjà en cours.\n"
+                "Voulez-vous continuer avec ce dossier ou en créer un nouveau ?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+            if reply == QMessageBox.Yes:
+                # Reuse existing dossier — skip creation
+                self.stepper.mark_done(0)
+                self.stepper.set_current(1)
+                self.stack.setCurrentIndex(self.PAGE_LOADING)
+                self.page_loading.start()
+                self.extraction_worker = ExtractionWorker(
+                    self.client, data, 
+                    dossier_id=self.current_dossier_id
+                )
+                self.extraction_worker.finished.connect(self._on_extraction_finished)
+                self.extraction_worker.error.connect(self._on_extraction_error)
+                self.extraction_worker.start()
+                return
+            else:
+                self.current_dossier_id = None  # Allow new creation
+
+        # 1. Création explicite du dossier avant l'extraction
+        payload = {
+            "nom_demandeur": data.get("nom", ""),
+            "identifiant_depositaire": data.get("identifiant", ""),
+            "type_demande": data.get("type", ""),
+            "region": data.get("region", ""),
+        }
+        res = self.client.post("/dossiers/", json=payload)
+        
+        if not res or "id" not in res:
+            QMessageBox.critical(self, "Erreur", "Impossible de créer le dossier sur le serveur. L'extraction ne peut pas démarrer.")
+            return
+
+        self.current_dossier_id = res["id"]
+
+        # 2. Transition UI
         self.stepper.mark_done(0)
         self.stepper.set_current(1)
         self.stack.setCurrentIndex(self.PAGE_LOADING)
         self.page_loading.start()
 
-        # Lancement du worker d'extraction
-        self.extraction_worker = ExtractionWorker(self.client, data)
+        # 3. Lancement du worker d'extraction avec l'ID créé
+        self.extraction_worker = ExtractionWorker(self.client, data, dossier_id=self.current_dossier_id)
         self.extraction_worker.finished.connect(self._on_extraction_finished)
         self.extraction_worker.error.connect(self._on_extraction_error)
         self.extraction_worker.start()
@@ -1791,9 +1831,22 @@ class DossierView(QWidget):
         # ExtractionKResult contient 'donnees', 'statistiques', etc.
         rows = result.get("donnees", [])
         stats = result.get("statistiques", {})
-        
+
+        # Dynamic headers from actual extracted data
+        fixed = ["N°", "Latitude DMS", "Longitude DMS"]
+        if rows:
+            spec = rows[0].get("donnees_specifiques", {})
+            keys = [k for k in spec.keys()
+                    if not k.startswith("_") and k != "erreur_coordonnee"]
+            alt  = [k for k in keys if "altitude" in k.lower() or "finale" in k.lower()]
+            rest = [k for k in keys if k not in alt]
+            headers = fixed + [k[0].upper()+k[1:] for k in rest + alt]
+        else:
+            headers = fixed
+
         self.show_extraction_results(
             rows,
+            headers=headers,
             type_formulaire=result.get("type_formulaire", "Inconnu"),
             n_detected=stats.get("total_lignes", len(rows)),
             success_rate=result.get("taux_succes", 100.0),

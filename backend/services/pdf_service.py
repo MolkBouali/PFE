@@ -46,9 +46,14 @@ class PDFService:
         doc.save(output_path)
 
         doc_db = DocumentGenere(dossier_id=dossier_id, nom_fichier=os.path.basename(output_path),
-                                type_document="AVIS_PDF", chemin_stockage=output_path,
-                                date_creation=datetime.datetime.now())
+                                 type_document="AVIS_PDF", chemin_stockage=output_path,
+                                 date_creation=datetime.datetime.now())
         self.db.add(doc_db)
+        
+        # Update dossier status and result
+        dossier.statut = "traite"
+        dossier.avis = type_avis
+        
         self.db.commit()
         return output_path
 
@@ -98,5 +103,10 @@ class PDFService:
             date_creation=datetime.datetime.now()
         )
         self.db.add(doc_db)
+        
+        # Update dossier status to pending when generating complement
+        dossier.statut = "en attente"
+        dossier.complement = "en_attente"
+        
         self.db.commit()
         return output_path

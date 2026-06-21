@@ -35,16 +35,67 @@ class KMZService:
                     PointMesure.coordonnee_valide == True
                 ).all()
 
+            # Don't regenerate if KMZ already exists and no valid points are found
+            if points_override is None and len(points) == 0:
+                kmz_dir = os.path.join(settings.STORAGE_PATH, "kmz")
+                existing_kmz = os.path.join(kmz_dir, f"localisation_{dossier_id}.kmz")
+                if os.path.exists(existing_kmz):
+                    print(f"  → KMZ already exists at {existing_kmz}, returning existing file")
+                    return existing_kmz
+                print(f"  ! No valid points found for dossier {dossier_id}")
+                raise ValueError(f"Aucun point valide pour le dossier {dossier_id}")
+
+            print(f"\n>>> [KMZService] Generating KMZ for dossier {dossier_id}")
+            print(f"    Points count: {len(points)}")
+
+            for pt in points:
+                coords = getattr(pt, 'coordinates', {}) or {}
+                print(f"    Point {getattr(pt, 'numero_ligne', '?')}: "
+                      f"coordinates={coords}, "
+                      f"coordonnee_valide={getattr(pt, 'coordonnee_valide', '?')}")
+
             kml = simplekml.Kml()
             for pt in points:
                 # On s'assure que pt a bien un attribut coordinates
-                coords = getattr(pt, 'coordinates', {})
-                lat_raw = coords.get("lat", "") if isinstance(coords, dict) else coords
-                lon_raw = coords.get("lon", "") if isinstance(coords, dict) else coords
+                coords = getattr(pt, 'coordinates', {}) or {}
+                if not isinstance(coords, dict):
+                    coords = {}
+
+                # Use pre-computed DD values if available
+                lat_dd = coords.get("lat_dd")
+                lon_dd = coords.get("lon_dd")
+
+                if lat_dd is not None and lon_dd is not None:
+                    lat = float(lat_dd)
+                    lon = float(lon_dd)
+                else:
+                    # Fallback: convert from DMS string
+                    lat = self._dms_to_dd(coords.get("lat", ""))
+                    lon = self._dms_to_dd(coords.get("lon", ""))
+
+                # Skip invalid points
+                if lat == 0.0 and lon == 0.0:
+                    print(f"  ! Skipping point {getattr(pt, 'numero_ligne', '?')} — invalid coordinates")
+                    continue
+
+                print(f"  → Point {getattr(pt, 'numero_ligne', '?')}: lat={lat}, lon={lon}")
                 
-                lat = self._dms_to_dd(lat_raw)
-                lon = self._dms_to_dd(lon_raw)
-                kml.newpoint(name=f"Point {getattr(pt, 'numero_ligne', 'N/A')}", coords=[(lon, lat)])
+                try:
+                    pnt = kml.newpoint(
+                        name=str(getattr(pt, 'numero_ligne', 'N/A')),
+                    )
+                    pnt.coords = [(lon, lat)]
+                    spec = getattr(pt, 'donnees_specifiques', {}) or {}
+                    desc_lines = [f"Latitude DMS: {coords.get('lat','')}",
+                                  f"Longitude DMS: {coords.get('lon','')}"]
+                    for k, v in spec.items():
+                        if not k.startswith("_") and k != "erreur_coordonnee":
+                            desc_lines.append(f"{k}: {v}")
+                    pnt.description = "\n".join(desc_lines)
+                    print(f"  ✓ Added point {getattr(pt, 'numero_ligne', '?')} at ({lat:.6f}, {lon:.6f})")
+                except Exception as e:
+                    print(f"  ! Failed to add point: {e}")
+                    continue
 
             # Gestion sécurisée du répertoire et du fichier
             try:
@@ -55,6 +106,9 @@ class KMZService:
             except (OSError, IOError) as e:
                 print(f"Erreur système lors de l'écriture du KMZ: {e}")
                 raise RuntimeError(f"Impossible d'écrire le fichier KMZ sur le disque: {str(e)}")
+
+            # After building KML, print point count
+            print(f"    Output path: {output_path}")
 
             # Sauvegarder la reference en base
             doc_db = DocumentGenere(

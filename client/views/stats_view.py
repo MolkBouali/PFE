@@ -44,48 +44,24 @@ class StatsView(QWidget):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
-        # 1. Header Bar (Fixed)
-        self.header = QFrame()
-        self.header.setFixedHeight(70)
-        self.header.setStyleSheet(f"background-color: {PRIMARY}; border: none;")
-        header_layout = QHBoxLayout(self.header)
-        header_layout.setContentsMargins(20, 0, 20, 0)
+        # 1. Header Row 1 (Dark Navy Bar)
+        self.header_row1 = QFrame()
+        self.header_row1.setFixedHeight(70)
+        self.header_row1.setStyleSheet(f"background-color: {PRIMARY}; border: none;")
+        header1_layout = QHBoxLayout(self.header_row1)
+        header1_layout.setContentsMargins(20, 0, 20, 0)
 
-        title_container = QVBoxLayout()
-        self.title_label = QLabel("Tableau de bord — Système de gestion de demandes d'avis OACA")
-        self.title_label.setStyleSheet("color: white; font-size: 20px; font-weight: bold; border: none; background: transparent;")
-        self.subtitle_label = QLabel("Vue d'ensemble de l'activité du service d'instruction")
-        self.subtitle_label.setStyleSheet(f"color: {BLUE_LT}; font-size: 12px; border: none; background: transparent;")
-        title_container.addWidget(self.title_label)
-        title_container.addWidget(self.subtitle_label)
+        self.main_title = QLabel("Système de gestion de demandes d'avis OACA")
+        self.main_title.setStyleSheet("color: white; font-size: 18px; font-weight: bold; border: none; background: transparent;")
+        header1_layout.addWidget(self.main_title)
+        header1_layout.addStretch()
 
-        header_layout.addLayout(title_container)
-        header_layout.addStretch()
-
-        # Header Buttons
+        # Action Buttons in Row 1
         buttons_container = QHBoxLayout()
         buttons_container.setSpacing(15)
 
-        # Add Create Dossier Button
-        self.btn_create_dossier = QPushButton("+ Nouveau Dossier")
-        self.btn_create_dossier.setFixedSize(160, 35)
-        self.btn_create_dossier.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {SECONDARY};
-                color: white;
-                font-weight: bold;
-                border-radius: 5px;
-                border: 1px solid #FFFFFF;
-            }}
-            QPushButton:hover {{
-                background-color: {PRIMARY};
-            }}
-        """)
-        self.btn_create_dossier.clicked.connect(self._on_create_dossier)
-
-        # Add Archives Button
         self.btn_view_archives = QPushButton("Consulter Archives")
-        self.btn_view_archives.setFixedSize(160, 35)
+        self.btn_view_archives.setFixedSize(160, 32)
         self.btn_view_archives.setStyleSheet(f"""
             QPushButton {{
                 background-color: #4A69BD;
@@ -100,46 +76,101 @@ class StatsView(QWidget):
         """)
         self.btn_view_archives.clicked.connect(self._on_view_archives)
 
+        self.btn_create_dossier = QPushButton("+ Nouveau Dossier")
+        self.btn_create_dossier.setFixedSize(160, 32)
+        self.btn_create_dossier.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {SECONDARY};
+                color: white;
+                font-weight: bold;
+                border-radius: 5px;
+                border: 1px solid #FFFFFF;
+            }}
+            QPushButton:hover {{
+                background-color: {PRIMARY};
+            }}
+        """)
+        self.btn_create_dossier.clicked.connect(self._on_create_dossier)
+
         buttons_container.addWidget(self.btn_view_archives)
         buttons_container.addWidget(self.btn_create_dossier)
-        header_layout.addLayout(buttons_container)
-        self.main_layout.addWidget(self.header)
+        header1_layout.addLayout(buttons_container)
+        self.main_layout.addWidget(self.header_row1)
 
-        # New Filter Bar (Separated from Header)
-        self.filter_bar = QFrame()
-        self.filter_bar.setFixedHeight(60)
-        self.filter_bar.setStyleSheet(f"background-color: white; border-bottom: 1px solid {GREY};")
-        filter_bar_layout = QHBoxLayout(self.filter_bar)
-        filter_bar_layout.setContentsMargins(20, 0, 20, 0)
+        # Header Row 2 (White Bar with Breadcrumbs and Filters)
+        self.header_row2 = QFrame()
+        self.header_row2.setFixedHeight(60)
+        self.header_row2.setStyleSheet("background-color: white; border-bottom: 1px solid #E0E0E0;")
+        row2_layout = QHBoxLayout(self.header_row2)
+        row2_layout.setContentsMargins(20, 0, 20, 0)
 
-        filter_label = QLabel("Filtres statistiques :")
-        filter_label.setStyleSheet(f"color: {PRIMARY}; font-weight: bold; border: none; background: transparent;")
+        # Left side: Breadcrumbs
+        left_side = QHBoxLayout()
+        title_lbl = QLabel("Tableau de bord")
+        title_lbl.setStyleSheet("color: #1F3864; font-size: 14px; font-weight: bold; background: transparent; border: none;")
+        
+        separator_lbl = QLabel("|")
+        separator_lbl.setStyleSheet("color: #CBD5E1; background: transparent; border: none;")
+        
+        subtitle_lbl = QLabel("Vue d'ensemble de l'activité du service d'instruction")
+        subtitle_lbl.setStyleSheet("color: #64748b; font-size: 11px; background: transparent; border: none;")
+        
+        left_side.addWidget(title_lbl)
+        left_side.addWidget(separator_lbl)
+        left_side.addWidget(subtitle_lbl)
+        left_side.addStretch()
+
+        # Right side: Integrated Filters
+        right_side = QHBoxLayout()
+        filter_lbl = QLabel("Filtres statistiques :")
+        filter_lbl.setStyleSheet("color: #1F3864; font-weight: bold; font-size: 11px; background: transparent; border: none;")
         
         self.year_combo = QComboBox()
         self.year_combo.addItems(["2025", "2026"])
         self.year_combo.setCurrentText("2026")
-        self.year_combo.setFixedWidth(80)
-        self.year_combo.setStyleSheet("padding: 3px; border: 1px solid #CCC; border-radius: 4px; background: white; color: black;")
+        self.year_combo.setStyleSheet("""
+            QComboBox {
+                border: 1px solid #CBD5E1;
+                border-radius: 4px;
+                padding: 2px 8px;
+                font-size: 12px;
+                background: white;
+                color: #1F3864;
+                min-width: 70px;
+            }
+            QComboBox::drop-down { border: none; }
+        """)
         
         self.month_combo = QComboBox()
         self.month_combo.addItems(["Toute l'année", "Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"])
         self.month_combo.setCurrentText("Jun")
-        self.month_combo.setFixedWidth(120)
-        self.month_combo.setStyleSheet("padding: 3px; border: 1px solid #CCC; border-radius: 4px; background: white; color: black;")
+        self.month_combo.setStyleSheet("""
+            QComboBox {
+                border: 1px solid #CBD5E1;
+                border-radius: 4px;
+                padding: 2px 8px;
+                font-size: 12px;
+                background: white;
+                color: #1F3864;
+                min-width: 120px;
+            }
+            QComboBox::drop-down { border: none; }
+        """)
  
         self.period_label = QLabel("")
-        self.period_label.setStyleSheet(f"color: {PRIMARY}; font-size: 11px; border: none; background: transparent; margin-left: 10px;")
+        self.period_label.setStyleSheet("color: #1F3864; font-size: 11px; border: none; background: transparent; margin-left: 10px;")
 
         self.year_combo.currentTextChanged.connect(self._refresh)
         self.month_combo.currentTextChanged.connect(self._refresh)
  
-        filter_bar_layout.addWidget(filter_label)
-        filter_bar_layout.addWidget(self.year_combo)
-        filter_bar_layout.addWidget(self.month_combo)
-        filter_bar_layout.addWidget(self.period_label)
-        filter_bar_layout.addStretch()
+        right_side.addWidget(filter_lbl)
+        right_side.addWidget(self.year_combo)
+        right_side.addWidget(self.month_combo)
+        right_side.addWidget(self.period_label)
 
-        self.main_layout.addWidget(self.filter_bar)
+        row2_layout.addLayout(left_side)
+        row2_layout.addLayout(right_side)
+        self.main_layout.addWidget(self.header_row2)
 
         # 2. Scroll Area
         self.scroll = QScrollArea()
@@ -164,8 +195,8 @@ class StatsView(QWidget):
         self.inner_widget = QWidget()
         self.inner_widget.setStyleSheet(f"background: {BG};")
         self.content_layout = QVBoxLayout(self.inner_widget)
-        self.content_layout.setSpacing(16)
-        self.content_layout.setContentsMargins(20, 20, 8, 16)
+        self.content_layout.setSpacing(8)
+        self.content_layout.setContentsMargins(20, 8, 8, 8)
         
         # 3. KPI Cards row
         self.kpi_row = QHBoxLayout()
@@ -186,10 +217,8 @@ class StatsView(QWidget):
         self.donuts_row = QHBoxLayout()
         self.donuts_row.setSpacing(20)
         
-        self.chart_status = ChartCard("Répartition par statut")
-        self.chart_status.setMinimumHeight(300)
-        self.chart_avis = ChartCard("Répartition des avis émis")
-        self.chart_avis.setMinimumHeight(300)
+        self.chart_status = ChartCard("Répartition par statut", height=280)
+        self.chart_avis = ChartCard("Répartition des avis émis", height=280)
         
         self.donuts_row.addWidget(self.chart_status)
         self.donuts_row.addWidget(self.chart_avis)
@@ -200,13 +229,11 @@ class StatsView(QWidget):
         self.content_layout.setSpacing(20)
         
         # 5. Monthly Bar Chart
-        self.chart_monthly = ChartCard("Évolution mensuelle — Dossiers déposés")
-        self.chart_monthly.setMinimumHeight(300)
+        self.chart_monthly = ChartCard("Évolution mensuelle — Dossiers déposés", height=250)
         self.content_layout.addWidget(self.chart_monthly)
 
         # 6. Regional Bar Chart
-        self.chart_regions = ChartCard("Distribution par région")
-        self.chart_regions.setMinimumHeight(400)
+        self.chart_regions = ChartCard("Distribution par région", height=360)
         self.content_layout.addWidget(self.chart_regions)
         
         # Content stays top-aligned
@@ -315,8 +342,8 @@ class StatsView(QWidget):
     def _draw_status_donut(self, dist):
         fig = self.chart_status.get_figure()
         fig.clf()
-        fig.set_size_inches(4, 4)
         ax = fig.add_subplot(111)
+        fig.subplots_adjust(left=0.05, right=0.65, top=0.92, bottom=0.12)
         ax.set_aspect('equal')
         
         labels = list(dist.keys())
@@ -343,8 +370,8 @@ class StatsView(QWidget):
     def _draw_avis_donut(self, dist):
         fig = self.chart_avis.get_figure()
         fig.clf()
-        fig.set_size_inches(4, 4)
         ax = fig.add_subplot(111)
+        fig.subplots_adjust(left=0.05, right=0.65, top=0.92, bottom=0.12)
         ax.set_aspect('equal')
         
         labels = list(dist.keys())

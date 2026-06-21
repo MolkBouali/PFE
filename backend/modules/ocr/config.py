@@ -125,15 +125,15 @@ ROI_CONFIGS = {
 
     # ID 20 — BÂTIMENT
     20: {
-        "nb_lignes_max":     10,
-        "premiere_ligne_dy": 3.2,
-        "hauteur_ligne":     0.38,
+        "nb_lignes_max":     16,
+        "premiere_ligne_dy": 3.508,
+        "hauteur_ligne":     0.62,
         "colonnes": [
-            {"champ": "hauteur (m)",            "dx": 0.10, "w": 0.55},
-            {"champ": "altitude_terrain (m)",      "dx": 0.72, "w": 2.80},
-            {"champ": "altitude_finale (m)",     "dx": 3.60, "w": 2.80},
-            {"champ": "latitude",  "dx": 6.50, "w": 1.10},
-            {"champ": "longitude", "dx": 7.70, "w": 1.00},
+            {"champ": "hauteur (m)",            "dx": -0.279, "w": 1.24},
+            {"champ": "altitude_terrain (m)",      "dx": 0.939, "w": 1.218},
+            {"champ": "altitude_finale (m)",     "dx": 2.157, "w": 1.24},
+            {"champ": "latitude",  "dx": 3.419, "w": 3.101},
+            {"champ": "longitude", "dx": 6.542, "w": 3.034},
         ],
     },
 
