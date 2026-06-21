@@ -25,6 +25,7 @@ services:
     volumes:
       - ./storage:/app/storage
       - ./models_ia:/app/models_ia
+      - ./templates:/app/templates
     depends_on:
       - db
 
