@@ -496,7 +496,14 @@ class ExtractionService:
                 # Chercher les champs d'altitude totale ou finale
                 for key, val in spec.items():
                     key_lower = key.lower()
-                    if "altitude totale" in key_lower or "altitude finale" in key_lower:
+                    if any(kw in key_lower for kw in [
+                        "altitude_totale", "altitude_finale", 
+                        "altitude totale", "altitude finale",
+                        "alt_totale", "alt_finale",
+                        "altitude_totale_mat", "altitude_totale_pylone",
+                        "altitude_totale_batiment"
+                    ]):
+                        print(f"  DEBUG altitude: key='{key}' val={val} → accepted={True}")
                         try:
                             val_f = float(str(val).replace(",", "."))
                             if val_f > altitude_finale_max:
@@ -504,6 +511,7 @@ class ExtractionService:
                         except (ValueError, TypeError):
                             pass
 
+            print(f"  DEBUG altitude_finale_max = {altitude_finale_max}")
             # ── Génération automatique du KMZ ─────────────────────────────────
             kmz_path = ""
             kmz_filename = ""
