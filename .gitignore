@@ -3,9 +3,6 @@ __pycache__/
 .env
 .venv/
 venv/
-storage/formulaires/*
-storage/kmz/*
-storage/pdf_avis/*
-storage/complements/*
+storage/*
 models_ia/det_model/*
 models_ia/rec_model/*
